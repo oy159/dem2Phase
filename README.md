@@ -16,6 +16,8 @@
 - ESA WorldCover 地表类型调制，以及共享场、边独立场和复 SLC 节点热噪声。
 - 同步、LOS 轨迹、姿态、亚像素配准和多节点/多边故障标签。
 - BLAKE2b + PCG64DXSM 分层随机种子；结果不依赖 worker 数量或执行顺序。
+- 云端 10 倍 profile 生成 2,340 个样本；可按 DEM 在本地确定性恢复云端子集，
+  无需下载对应 MAT 文件。
 - MATLAB/Python grouped-MAT schema 兼容、严格验证、统计比较和固定 crop golden test。
 - Docker/CPU 多进程生成和可验证的断点续跑。
 

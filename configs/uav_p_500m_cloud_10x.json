@@ -1,0 +1,13 @@
+{
+  "extends": "uav_p_500m_monostatic.json",
+  "name": "uav_p_500m_cloud_10x",
+  "dataset": {
+    "output_directory": "data/cloud_dataset_uav_p_500m_phase4_10x",
+    "generation": {
+      "patch_multiplier": 10
+    },
+    "terrain_sampling": {
+      "max_source_overlap_ratio": 0.25
+    }
+  }
+}

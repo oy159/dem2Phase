@@ -19,10 +19,31 @@ def _require(mapping: dict[str, Any], names: list[str], context: str) -> None:
         raise ValueError(f"Missing {context} fields: {', '.join(missing)}")
 
 
+def _deep_merge(base: dict[str, Any], override: dict[str, Any]) -> dict[str, Any]:
+    result = copy.deepcopy(base)
+    for key, value in override.items():
+        if key in result and isinstance(result[key], dict) and isinstance(value, dict):
+            result[key] = _deep_merge(result[key], value)
+        else:
+            result[key] = copy.deepcopy(value)
+    return result
+
+
+def _load_json_with_extends(path: Path, chain: tuple[Path, ...] = ()) -> dict[str, Any]:
+    if path in chain:
+        raise ValueError(f"Circular config inheritance: {path}")
+    with path.open("r", encoding="utf-8") as handle:
+        value = json.load(handle)
+    parent = value.pop("extends", None)
+    if parent is None:
+        return value
+    parent_path = (path.parent / parent).resolve()
+    return _deep_merge(_load_json_with_extends(parent_path, chain + (path,)), value)
+
+
 def load_config(path: str | Path) -> dict[str, Any]:
     path = Path(path).resolve()
-    with path.open("r", encoding="utf-8") as handle:
-        cfg = json.load(handle)
+    cfg = _load_json_with_extends(path)
     cfg = validate_and_derive(cfg)
     cfg["config_path"] = str(path)
     cfg["project_root"] = str(path.parent.parent)
@@ -65,6 +86,12 @@ def validate_and_derive(value: dict[str, Any]) -> dict[str, Any]:
         raise NotImplementedError("Python v1 supports only terrain_aware coherence")
     if cfg["dataset"]["storage"]["mode"] != "grouped_mat":
         raise NotImplementedError("Python v1 supports only grouped_mat storage")
+    multiplier = cfg["dataset"]["generation"].get("patch_multiplier", 1)
+    if isinstance(multiplier, bool) or int(multiplier) != multiplier or int(multiplier) < 1:
+        raise ValueError("dataset.generation.patch_multiplier must be a positive integer")
+    max_overlap = cfg["dataset"]["terrain_sampling"].get("max_source_overlap_ratio")
+    if max_overlap is not None and not 0 <= float(max_overlap) <= 1:
+        raise ValueError("dataset.terrain_sampling.max_source_overlap_ratio must be in [0, 1]")
     expected_multiplicity = 1 if intr["measurement_mode"] == "single_tx_multireceiver" else 2
     if multiplicity != expected_multiplicity:
         raise ValueError("phase_path_multiplicity does not match measurement_mode")

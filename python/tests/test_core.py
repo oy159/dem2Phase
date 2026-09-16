@@ -93,6 +93,55 @@ def test_single_dem_smoke_override(tmp_path: Path):
     assert all(hasattr(node, "sync_jump_rad") for node in node_parameters.ravel())
 
 
+def test_selected_dem_shard_preserves_full_run_identity(tmp_path: Path):
+    cfg = load_config(_fixture_project(tmp_path))
+    full, shard = tmp_path / "full", tmp_path / "shard"
+    generate_dataset(cfg, full, 42, workers=1)
+    selected = "fixture_N00E001_DEM.tif"
+    generate_dataset(cfg, shard, 42, workers=1, dem_files=[selected])
+
+    full_files = sorted((full / "patch_groups" / "test").glob("*.mat"))
+    shard_files = sorted((shard / "patch_groups" / "test").glob("*.mat"))
+    assert [path.name for path in shard_files] == [path.name for path in full_files]
+    assert [path.name for path in shard_files] == [
+        "fixture_N00E001_DEM_patch_00003.mat",
+        "fixture_N00E001_DEM_patch_00004.mat",
+    ]
+    array_fields = ("wrappedphase_withoutnoise", "wrappedphase_withnoise",
+                    "unwrapped_phase", "coherence_observed", "coherence_true",
+                    "valid_edge_mask", "landcover_codes")
+    for full_path, shard_path in zip(full_files, shard_files):
+        full_sample = loadmat(full_path, squeeze_me=True, struct_as_record=False)
+        shard_sample = loadmat(shard_path, squeeze_me=True, struct_as_record=False)
+        for field in array_fields:
+            assert np.array_equal(full_sample[field], shard_sample[field])
+        assert (full_sample["metadata"].patch_global_id ==
+                shard_sample["metadata"].patch_global_id)
+    assert (shard / "input_inventory.csv").is_file()
+    assert (shard / "recovery_recipe.json").is_file()
+
+
+def test_config_extends_and_patch_multiplier(tmp_path: Path):
+    base_path = _fixture_project(tmp_path)
+    child = tmp_path / "configs" / "cloud.json"
+    child.write_text(json.dumps({
+        "extends": base_path.name,
+        "name": "fixture_cloud",
+        "dataset": {"generation": {"patch_multiplier": 10}},
+    }), encoding="utf-8")
+    cfg = load_config(child)
+    assert cfg["name"] == "fixture_cloud"
+    assert cfg["dataset"]["generation"]["patch_size"] == 16
+    assert cfg["dataset"]["generation"]["patch_multiplier"] == 10
+
+
+def test_source_overlap_fraction():
+    overlap = generator_module._source_overlap_fraction
+    assert overlap((0, 0, 10, 10), (20, 20, 30, 30)) == 0
+    assert overlap((0, 0, 10, 10), (5, 0, 15, 10)) == pytest.approx(0.5)
+    assert overlap((0, 0, 10, 10), (2, 2, 8, 8)) == pytest.approx(1.0)
+
+
 def test_complete_resume_skips_dem_computation(tmp_path: Path, monkeypatch):
     cfg = load_config(_fixture_project(tmp_path))
     output = tmp_path / "complete"

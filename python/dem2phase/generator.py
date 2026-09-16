@@ -5,6 +5,7 @@ from __future__ import annotations
 import concurrent.futures
 import copy
 import hashlib
+import importlib.metadata
 import json
 import math
 import os
@@ -41,6 +42,7 @@ PLAN_COLUMNS = [
     "num_mean", "num_min", "max_wrap_count", "active_edge_count", "dropout_present",
     "sync_anomaly_present", "low_coherence_present", "compound_failure_present",
     "failure_factor_count", "accept_probability", "ground_pixel_spacing_m",
+    "source_overlap_fraction",
 ]
 
 
@@ -78,14 +80,58 @@ def _git_commit(root: Path) -> str:
         return "unknown"
 
 
-def _state(cfg: dict[str, Any], seed: int, manifest: pd.DataFrame) -> dict[str, Any]:
+def _file_sha256(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as handle:
+        for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def _portable_path(path: Path, root: Path) -> str:
+    try:
+        return path.resolve().relative_to(root.resolve()).as_posix()
+    except ValueError:
+        return path.resolve().as_posix()
+
+
+def _input_inventory(cfg: dict[str, Any], manifest_path: Path,
+                     dem_paths: list[Path]) -> tuple[pd.DataFrame, str]:
+    root = Path(cfg["project_root"])
+    lc_cfg = cfg["dataset"]["landcover"]
+    lc_root = resolve_path(cfg, lc_cfg["aligned_directory"])
+    entries: list[tuple[str, Path]] = [("split_manifest", manifest_path)]
+    for dem_path in dem_paths:
+        entries.append(("dem", dem_path))
+        num_path = _num_path(dem_path)
+        if num_path is not None:
+            entries.append(("aster_num", num_path))
+        if lc_cfg["enabled"]:
+            entries.append(("landcover", lc_root / f"{dem_path.stem}{lc_cfg['aligned_suffix']}"))
+    rows = []
+    for role, path in entries:
+        if not path.is_file():
+            raise FileNotFoundError(f"Missing required {role} input: {path}")
+        rows.append({"role": role, "logical_path": _portable_path(path, root),
+                     "size_bytes": path.stat().st_size, "sha256": _file_sha256(path)})
+    frame = pd.DataFrame(rows).sort_values(["role", "logical_path"]).reset_index(drop=True)
+    raw = frame.to_csv(index=False, lineterminator="\n").encode("utf-8")
+    return frame, hashlib.sha256(raw).hexdigest()
+
+
+def _state(cfg: dict[str, Any], seed: int, manifest: pd.DataFrame,
+           input_fingerprint: str, full_manifest_rows: int,
+           full_target_patches: int) -> dict[str, Any]:
     return {"schema_version": 1, "generator": "dem2phase-python",
             "generator_version": __version__, "config_sha256": config_hash(cfg),
             "generator_fingerprint": source_fingerprint(),
             "batch_seed": int(seed), "rng_algorithm": RNG_ALGORITHM,
+            "input_fingerprint_sha256": input_fingerprint,
             "manifest_rows": int(len(manifest)),
+            "full_manifest_rows": int(full_manifest_rows),
             "dem_files": list(manifest["dem_file"].astype(str)),
-            "target_patches": int(manifest["patches_per_dem"].sum())}
+            "target_patches": int(manifest["patches_per_dem"].sum()),
+            "full_target_patches": int(full_target_patches)}
 
 
 def _prepare_output(output: Path, state: dict[str, Any], resume: bool) -> None:
@@ -98,7 +144,8 @@ def _prepare_output(output: Path, state: dict[str, Any], resume: bool) -> None:
         saved = json.loads(state_path.read_text(encoding="utf-8"))
         for key in ("schema_version", "generator_version", "config_sha256", "batch_seed",
                     "generator_fingerprint", "rng_algorithm", "manifest_rows", "dem_files",
-                    "target_patches"):
+                    "target_patches", "input_fingerprint_sha256", "full_manifest_rows",
+                    "full_target_patches"):
             if saved.get(key) != state.get(key):
                 raise ValueError(f"Resume state mismatch for {key}")
     else:
@@ -132,40 +179,65 @@ def generate_dataset(cfg: dict[str, Any], output: Path, seed: int,
     manifest_path = resolve_path(cfg, cfg["dataset"]["split_manifest"])
     dem_root = resolve_path(cfg, cfg["dataset"]["dem_directory"])
     manifest = load_split_manifest(manifest_path)
-    if dem_files:
-        unknown = sorted(set(dem_files) - set(manifest["dem_file"]))
-        if unknown:
-            raise ValueError(f"Requested DEMs are absent from the split manifest: {unknown}")
-        order = {name: index for index, name in enumerate(dem_files)}
-        manifest = manifest[manifest["dem_file"].isin(dem_files)].copy()
-        manifest["_selection_order"] = manifest["dem_file"].map(order)
-        manifest = manifest.sort_values("_selection_order").drop(columns="_selection_order")
+    multiplier = int(cfg["dataset"]["generation"].get("patch_multiplier", 1))
+    manifest["patches_per_dem"] = manifest["patches_per_dem"].astype(int) * multiplier
     if patches_per_dem is not None:
         if patches_per_dem < 1:
             raise ValueError("patches_per_dem override must be positive")
         manifest["patches_per_dem"] = int(patches_per_dem)
+    manifest["_manifest_index"] = np.arange(len(manifest), dtype=int)
+    manifest["_global_offset"] = np.concatenate((
+        [0], np.cumsum(manifest["patches_per_dem"].to_numpy(dtype=int))[:-1]))
+    full_manifest_rows = len(manifest)
+    full_target_patches = int(manifest["patches_per_dem"].sum())
+    if dem_files:
+        unknown = sorted(set(dem_files) - set(manifest["dem_file"]))
+        if unknown:
+            raise ValueError(f"Requested DEMs are absent from the split manifest: {unknown}")
+        manifest = manifest[manifest["dem_file"].isin(dem_files)].copy()
+        manifest = manifest.sort_values("_manifest_index")
     dem_paths = discover_dems(dem_root, manifest, allow_extras=bool(dem_files))
-    state = _state(cfg, seed, manifest)
+    inventory, input_fingerprint = _input_inventory(cfg, manifest_path, dem_paths)
+    state = _state(cfg, seed, manifest, input_fingerprint,
+                   full_manifest_rows, full_target_patches)
     _prepare_output(output, state, resume)
     if resume and _complete_plan(output, state["target_patches"]) is not None:
         return {"patches": state["target_patches"], "dems": int(len(manifest)),
                 "output": str(output), "config_sha256": state["config_sha256"],
                 "resumed_complete": True}
     effective = _config_for_hash(cfg)
+    inventory.to_csv(output / "input_inventory.csv", index=False, lineterminator="\n")
     (output / "simulation_config_effective.json").write_text(
         json.dumps(effective, indent=2), encoding="utf-8")
     atomic_savemat(output / "simulation_config_derived.mat", {"sim_cfg": effective})
     provenance = {**state, "python": platform.python_version(), "platform": platform.platform(),
-                  "numpy": np.__version__, "git_commit": _git_commit(Path(cfg["project_root"]))}
+                  "numpy": np.__version__, "scipy": importlib.metadata.version("scipy"),
+                  "pandas": pd.__version__, "rasterio": importlib.metadata.version("rasterio"),
+                  "git_commit": _git_commit(Path(cfg["project_root"]))}
     (output / "provenance.json").write_text(json.dumps(provenance, indent=2), encoding="utf-8")
+    config_path = Path(cfg["config_path"])
+    recipe = {
+        "purpose": "Regenerate a full run or a deterministic DEM shard without downloading MAT files",
+        "config": _portable_path(config_path, Path(cfg["project_root"])),
+        "config_sha256": state["config_sha256"],
+        "generator_fingerprint": state["generator_fingerprint"],
+        "input_fingerprint_sha256": input_fingerprint,
+        "batch_seed": int(seed),
+        "full_target_patches": full_target_patches,
+        "selected_dem_files": state["dem_files"],
+        "full_command": f"python -m dem2phase generate --config {_portable_path(config_path, Path(cfg['project_root']))} --seed {seed} --workers 8 --output <output>",
+        "shard_command_template": f"python -m dem2phase generate --config {_portable_path(config_path, Path(cfg['project_root']))} --seed {seed} --dem-file <DEM_FILENAME> --output <output>",
+        "global_identity_preserved_for_dem_shards": True,
+        "required_local_inputs": "Files and SHA-256 values are listed in input_inventory.csv",
+    }
+    (output / "recovery_recipe.json").write_text(json.dumps(recipe, indent=2), encoding="utf-8")
     atomic_savemat(output / "rng_manifest.mat", {
         "rng_seed_used": np.uint64(seed), "rng_algorithm": RNG_ALGORITHM,
         "config_sha256": state["config_sha256"]})
 
-    offsets = np.concatenate(([0], np.cumsum(manifest["patches_per_dem"].to_numpy(dtype=int))))
-    tasks = [(cfg, row.to_dict(), str(path), str(output), int(seed), index,
-              int(offsets[index]), resume)
-             for index, (path, (_, row)) in enumerate(zip(dem_paths, manifest.iterrows()))]
+    tasks = [(cfg, row.to_dict(), str(path), str(output), int(seed),
+              int(row["_manifest_index"]), int(row["_global_offset"]), resume)
+             for path, (_, row) in zip(dem_paths, manifest.iterrows())]
     results: list[dict[str, Any]] = []
     if workers <= 1:
         results = [_generate_dem(task) for task in tasks]
@@ -215,6 +287,7 @@ def _generate_dem(task: tuple[Any, ...]) -> dict[str, Any]:
     num_path = _num_path(dem_path)
     num_map = read_raster(num_path, np.uint8)[0] if num_path else None
     plan: list[dict[str, Any]] = []
+    accepted_source_boxes: list[tuple[float, float, float, float]] = []
     accepted_count = 0
     for candidate in range(1, max_attempts + 1):
         base = (row["geographic_tile"], dem_path.name, candidate)
@@ -227,6 +300,11 @@ def _generate_dem(task: tuple[Any, ...]) -> dict[str, Any]:
         r0 = int(crop_rng.integers(0, max(1, scaled_rows - patch_size)))
         c0 = int(crop_rng.integers(0, max(1, scaled_cols - patch_size)))
         bounds = (r0, c0, r0 + patch_size - 1, c0 + patch_size - 1)
+        source_box = (r0 * rows / scaled_rows, c0 * cols / scaled_cols,
+                      (bounds[2] + 1) * rows / scaled_rows,
+                      (bounds[3] + 1) * cols / scaled_cols)
+        overlap = max((_source_overlap_fraction(source_box, previous)
+                       for previous in accepted_source_boxes), default=0.0)
         base_plan = {"manifest_index": manifest_index + 1, "candidate_index": candidate,
                      "accepted_index": 0, "accepted": False, "reject_reason": "",
                      "patch_global_id": 0, "patch_name": "", "patch_group_file": "",
@@ -245,7 +323,13 @@ def _generate_dem(task: tuple[Any, ...]) -> dict[str, Any]:
                      "dropout_present": False, "sync_anomaly_present": False,
                      "low_coherence_present": False, "compound_failure_present": False,
                      "failure_factor_count": 0, "accept_probability": np.nan,
-                     "ground_pixel_spacing_m": float(cfg["dataset"]["source_dem_pixel_spacing_m"]) / scale}
+                     "ground_pixel_spacing_m": float(cfg["dataset"]["source_dem_pixel_spacing_m"]) / scale,
+                     "source_overlap_fraction": overlap}
+        overlap_limit = cfg["dataset"]["terrain_sampling"].get("max_source_overlap_ratio")
+        if overlap_limit is not None and overlap > float(overlap_limit):
+            base_plan["reject_reason"] = "spatial_overlap"
+            plan.append(base_plan)
+            continue
         patch_dem = cubic_crop(coefficients, (scaled_rows, scaled_cols), bounds)
         patch_dem -= np.nanmin(patch_dem)
         clean_unwrapped = [patch_dem * ratio for ratio in ratios]
@@ -289,6 +373,7 @@ def _generate_dem(task: tuple[Any, ...]) -> dict[str, Any]:
             plan.append(base_plan)
             continue
         accepted_count += 1
+        accepted_source_boxes.append(source_box)
         global_id = offset + accepted_count
         patch_name = f"{stem}_patch_{global_id:05d}"
         relative = Path("patch_groups") / row["split"] / f"{patch_name}.mat"
@@ -344,6 +429,20 @@ def _generate_dem(task: tuple[Any, ...]) -> dict[str, Any]:
             break
     return {"manifest_index": manifest_index, "source_file": dem_path.name,
             "target": target, "accepted": accepted_count, "attempts": len(plan), "plan": plan}
+
+
+def _source_overlap_fraction(left: tuple[float, float, float, float],
+                             right: tuple[float, float, float, float]) -> float:
+    """Intersection area divided by the smaller source-footprint area."""
+    lr0, lc0, lr1, lc1 = left
+    rr0, rc0, rr1, rc1 = right
+    height = max(0.0, min(lr1, rr1) - max(lr0, rr0))
+    width = max(0.0, min(lc1, rc1) - max(lc0, rc0))
+    intersection = height * width
+    left_area = max(0.0, lr1 - lr0) * max(0.0, lc1 - lc0)
+    right_area = max(0.0, rr1 - rr0) * max(0.0, rc1 - rc0)
+    denominator = min(left_area, right_area)
+    return intersection / denominator if denominator > 0 else 0.0
 
 
 def _build_payload(cfg: dict[str, Any], clean: list[np.ndarray], noisy: list[np.ndarray],

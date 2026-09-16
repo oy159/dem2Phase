@@ -40,6 +40,48 @@ python -m dem2phase compare-matlab \
   --python-dataset data/pilot_dataset_uav_p_500m_phase4_python
 ```
 
+## Cloud 10x profile and local recovery
+
+`configs/uav_p_500m_cloud_10x.json` inherits the production physics from the
+local profile and multiplies every manifest patch count by 10. It generates
+2,340 grouped MAT samples: 1,620 train, 560 test, and 160 validation samples.
+The expected output size is approximately 29--31 GiB. The local profile stays
+at 234 samples. Cloud candidates whose source-DEM footprint overlaps an
+already accepted patch by more than 25% are rejected; the measured overlap and
+`spatial_overlap` rejection reason are retained in `generation_plan.csv`.
+
+```bash
+python -m dem2phase generate \
+  --config configs/uav_p_500m_cloud_10x.json \
+  --seed 42 --workers 8 \
+  --output /data/dem2phase_cloud_10x
+```
+
+Every run writes `input_inventory.csv` with the byte size and SHA-256 of the
+split manifest, selected DEMs, ASTER NUM rasters, and aligned WorldCover MAT
+files. `provenance.json` also records the effective config hash, generator
+source fingerprint, Git commit, RNG algorithm, Python version, and the pinned
+NumPy/SciPy/Pandas/Rasterio versions. `recovery_recipe.json` contains the exact
+seed and command templates.
+
+Cloud MAT files do not have to be downloaded to recover a deterministic
+subset. With the same repository revision and locally retained input rasters,
+regenerate one DEM shard directly on the local machine:
+
+```bash
+python -m dem2phase generate \
+  --config configs/uav_p_500m_cloud_10x.json \
+  --seed 42 \
+  --dem-file Copernicus_DSM_COG_10_N27_00_E084_00_DEM.tif \
+  --output data/recovered_N27E084
+```
+
+`--dem-file` preserves the DEM's position and global offsets from the full
+manifest. Patch names, global IDs, crop coordinates, component seeds, and all
+numeric arrays therefore match the corresponding full cloud run. Repeat the
+option to recover several DEM shards. A different generator fingerprint or an
+input SHA-256 mismatch means exact recovery is not guaranteed.
+
 Prepare WorldCover into a separate validation directory and compare it with
 the MATLAB-aligned rasters without overwriting either set:
 
@@ -111,10 +153,12 @@ docker run --rm \
   --output data/pilot_dataset_uav_p_500m_phase4_python
 ```
 
-Only the input DEMs, ASTER NUM files, aligned WorldCover files, configuration,
-and split manifest need to be uploaded. Generated patch groups stay in the
-mounted output volume or cloud object-storage mount. Passing the host UID/GID
-prevents bind-mounted results from being owned by root.
+Only Python 3.11 plus the locked packages are required in the container. The
+input DEMs, ASTER NUM files, aligned WorldCover files, configuration, and split
+manifest are mounted as volumes; MATLAB is not required. Generated patch
+groups stay in the mounted output volume or cloud object-storage mount.
+Passing the host UID/GID prevents bind-mounted results from being owned by
+root.
 
 ## Commands
 
@@ -127,9 +171,10 @@ prevents bind-mounted results from being owned by root.
 - `tools/compare_cross_language_golden.py`: strict deterministic cross-language
   numerical regression test.
 
-Every run records `run_state.json`, `provenance.json`, the effective and
-derived configurations, `rng_manifest.mat`, `generation_plan.csv`, three
-generation logs, and failure-balanced training manifests.
+Every run records `run_state.json`, `provenance.json`, `input_inventory.csv`,
+`recovery_recipe.json`, the effective and derived configurations,
+`rng_manifest.mat`, `generation_plan.csv`, three generation logs, and
+failure-balanced training manifests.
 
 ## Verified container smoke test
 
