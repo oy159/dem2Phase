@@ -1,0 +1,29 @@
+[build-system]
+requires = ["setuptools>=69", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "dem2phase-cloud"
+version = "0.1.0"
+description = "Deterministic cloud generator for the dem2phase multi-UAV InSAR dataset"
+requires-python = ">=3.11,<3.13"
+dependencies = [
+  "numpy==1.26.4",
+  "scipy==1.13.1",
+  "pandas==2.2.2",
+  "rasterio==1.3.10",
+]
+
+[project.optional-dependencies]
+test = ["pytest==8.2.2"]
+
+[project.scripts]
+dem2phase = "dem2phase.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["dem2phase*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"

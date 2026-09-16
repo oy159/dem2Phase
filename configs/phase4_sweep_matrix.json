@@ -1,0 +1,13 @@
+{
+  "schema_version": 1,
+  "base_config": "uav_p_500m_monostatic.json",
+  "paired_batch_seed": 42,
+  "patches_per_dem": 4,
+  "scenarios": ["sync_only", "trajectory_only", "coreg_only", "combined"],
+  "levels": {
+    "nominal": 1,
+    "challenging": 3,
+    "failure": 10
+  },
+  "notes": "All cells use identical crop, scale, SNR, land-cover sampling and component seeds. Only enabled Phase-4 components and their scale multiplier change. Values remain unvalidated until fitted to flight data."
+}

@@ -1,0 +1,37 @@
+# Generated datasets and source rasters
+data/
+outputs/
+*.tif
+*.tiff
+*.hgt
+*.vrt
+
+# MATLAB generated artifacts (keep the small cross-language fixture)
+*.mat
+!python/tests/fixtures/matlab_cross_language_golden.mat
+*.asv
+*.autosave
+
+# Python build/test caches
+__pycache__/
+*.py[cod]
+.pytest_cache/
+*.egg-info/
+build/
+dist/
+.venv/
+venv/
+
+# Local logs, scratch and editor state
+*.log
+*.tmp
+*.bak
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db
+
+# Local environment/secrets
+.env
+.env.*
+!.env.example

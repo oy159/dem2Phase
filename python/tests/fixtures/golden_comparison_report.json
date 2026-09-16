@@ -1,0 +1,127 @@
+{
+  "fixture_schema_version": 1,
+  "fields": {
+    "dem_patch": {
+      "max_abs": 0.0011001803852082048,
+      "mean_abs": 0.0002699198821472453,
+      "max_rel": 0.007062387564658817
+    },
+    "unwrapped_phase": {
+      "max_abs": 0.00013834845501525805,
+      "mean_abs": 1.9092720644688075e-05,
+      "max_rel": 0.007062387564658905
+    },
+    "wrapped_phase": {
+      "max_abs": 0.00013834845501525805,
+      "mean_abs": 1.9092720644688003e-05,
+      "max_rel": 0.007062387564659048
+    },
+    "convolution_same": {
+      "max_abs": 8.526512829121202e-14,
+      "mean_abs": 1.4596511134282323e-14,
+      "max_rel": 5.733775294622822e-16
+    },
+    "registered_complex": {
+      "max_abs": 5.978733960281817e-16,
+      "mean_abs": 1.0459996396252828e-16,
+      "max_rel": 4.107599689953342e-16
+    },
+    "coherence_deterministic": {
+      "max_abs": 0.0002216615658608978,
+      "mean_abs": 5.9392813522942035e-05,
+      "max_rel": 0.0003104906868435052
+    },
+    "terrain.slope_deg": {
+      "max_abs": 0.0024801450314209106,
+      "mean_abs": 0.0004986717374473517,
+      "max_rel": 0.002025369409700821
+    },
+    "terrain.aspect_rad": {
+      "max_abs": 0.002215087749239286,
+      "mean_abs": 0.0001981833606704188,
+      "max_rel": 0.009155099519332017
+    },
+    "terrain.range_slope_deg": {
+      "max_abs": 0.0027274792927014513,
+      "mean_abs": 0.0004278367156558631,
+      "max_rel": 0.009008444919582234
+    },
+    "terrain.local_incidence_deg": {
+      "max_abs": 0.002725499535507936,
+      "mean_abs": 0.0004290502172803036,
+      "max_rel": 6.0020552557798234e-05
+    },
+    "terrain.roughness_m": {
+      "max_abs": 0.000245804064835653,
+      "mean_abs": 4.708422313479256e-05,
+      "max_rel": 0.00038238353541312483
+    },
+    "terrain.curvature": {
+      "max_abs": 5.491302688219709e-06,
+      "mean_abs": 1.4488686375050771e-06,
+      "max_rel": 7.500618801512674
+    },
+    "terrain.tpi_m": {
+      "max_abs": 0.0009601391891163047,
+      "mean_abs": 0.0002337855245793834,
+      "max_rel": 8.668273453427672
+    },
+    "terrain.terrain_quality": {
+      "max_abs": 0.00023643712505194703,
+      "mean_abs": 6.356307504764845e-05,
+      "max_rel": 0.0003151303462613865
+    }
+  },
+  "exact_fields": {
+    "source_row_index": true,
+    "source_col_index": true,
+    "landcover_patch": true,
+    "layover_mask": true,
+    "shadow_mask": true,
+    "registration_valid_mask": true
+  },
+  "physics": {
+    "wavelength_m": {
+      "max_abs": 0.0,
+      "mean_abs": 0.0,
+      "max_rel": 0.0
+    },
+    "critical_baseline_m": {
+      "max_abs": 5.684341886080802e-14,
+      "mean_abs": 5.684341886080802e-14,
+      "max_rel": 2.009718347115232e-16
+    },
+    "range_resolution_m": {
+      "max_abs": 0.0,
+      "mean_abs": 0.0,
+      "max_rel": 0.0
+    },
+    "ambiguity_heights_m": {
+      "max_abs": 0.0,
+      "mean_abs": 0.0,
+      "max_rel": 0.0
+    },
+    "dem2phase_ratios_rad_per_m": {
+      "max_abs": 0.0,
+      "mean_abs": 0.0,
+      "max_rel": 0.0
+    }
+  },
+  "atol": {
+    "dem_patch": 0.0015,
+    "unwrapped_phase": 0.0002,
+    "wrapped_phase": 0.0002,
+    "convolution_same": 1e-12,
+    "registered_complex": 1e-12,
+    "coherence_deterministic": 0.0003,
+    "terrain.slope_deg": 0.003,
+    "terrain.aspect_rad": 0.003,
+    "terrain.range_slope_deg": 0.0035,
+    "terrain.local_incidence_deg": 0.0035,
+    "terrain.roughness_m": 0.0003,
+    "terrain.curvature": 7e-06,
+    "terrain.tpi_m": 0.0012,
+    "terrain.terrain_quality": 0.0003
+  },
+  "passes": true
+}
