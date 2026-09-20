@@ -208,7 +208,9 @@ def browse_patches(dataset: Path, split: str = "test", index: int = 1,
     import matplotlib.pyplot as plt
 
     state = {"index": index - 1}
-    fig = plt.figure(figsize=(18, 12))
+    # ``compressed`` specifically removes excess whitespace around fixed-aspect
+    # image axes, which is important for the 5-row diagnostic matrix.
+    fig = plt.figure(figsize=(15, 13.5), layout="compressed")
 
     def render() -> None:
         path = files[state["index"]]
@@ -228,9 +230,8 @@ def browse_patches(dataset: Path, split: str = "test", index: int = 1,
 
         fig.clear()
         columns = max(1, len(active)) + 1
+        fig.set_size_inches(max(9.0, 3.0 * columns), 13.5, forward=True)
         axes = fig.subplots(5, columns, squeeze=False)
-        fig.subplots_adjust(left=0.035, right=0.97, top=0.91, bottom=0.065,
-                            hspace=0.30, wspace=0.22)
         fig.suptitle(
             f"[{state['index'] + 1}/{len(files)}] {patch_name} | tile {tile} | "
             "A: previous   D: next   Q/Esc: quit",
@@ -252,7 +253,7 @@ def browse_patches(dataset: Path, split: str = "test", index: int = 1,
                 axes[row, column].imshow(data, cmap=colormap, vmin=vmin, vmax=vmax)
                 axes[row, column].set_title(
                     f"E{edge + 1} B={float(baselines[edge]):g}m "
-                    f"ha={float(ambiguity[edge]):.1f}m\n{row_names[row]}", fontsize=9)
+                    f"ha={float(ambiguity[edge]):.1f}m\n{row_names[row]}", fontsize=8.5)
                 axes[row, column].set_xticks([])
                 axes[row, column].set_yticks([])
 
