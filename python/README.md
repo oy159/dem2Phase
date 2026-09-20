@@ -62,6 +62,15 @@ python -m dem2phase visualize \
 `jet` is the default colormap. Pass another Matplotlib colormap name through
 `--colormap` when a cyclic or perceptually uniform view is needed.
 
+Browse without writing any image or JSON files. Patches are ordered by numeric
+`patch_global_id`; press `A`/left for the previous patch, `D`/right for the
+next patch, and `Q` or `Esc` to close the window:
+
+```bash
+python -m dem2phase browse \
+  --dataset data/local_test_python --split test --index 1 --colormap jet
+```
+
 Select by filename text or render particular one-based edge slots:
 
 ```bash

@@ -20,7 +20,7 @@ from dem2phase.io import load_split_manifest
 from dem2phase.landcover import worldcover_token
 from dem2phase.rng import derive_seed, generator
 from dem2phase.validation import validate_dataset
-from dem2phase.visualization import visualize_patch
+from dem2phase.visualization import browse_patches, visualize_patch
 import dem2phase.generator as generator_module
 
 
@@ -122,7 +122,7 @@ def test_selected_dem_shard_preserves_full_run_identity(tmp_path: Path):
     assert (shard / "recovery_recipe.json").is_file()
 
 
-def test_split_selection_preserves_global_identity_and_visualizes(tmp_path: Path):
+def test_split_selection_preserves_global_identity_and_visualizes(tmp_path: Path, monkeypatch):
     cfg = load_config(_fixture_project(tmp_path))
     output = tmp_path / "test_only"
     generate_dataset(cfg, output, 42, workers=1, splits=["test"])
@@ -137,6 +137,11 @@ def test_split_selection_preserves_global_identity_and_visualizes(tmp_path: Path
     assert Path(rendered["overview_png"]).is_file()
     assert Path(rendered["terrain_png"]).is_file()
     assert Path(rendered["summary_json"]).is_file()
+    import matplotlib.pyplot as plt
+    monkeypatch.setattr(plt, "show", lambda: None)
+    browsed = browse_patches(output, split="test", index=1)
+    assert browsed["patches"] == 2
+    assert browsed["files_written"] == 0
 
 
 def test_config_extends_and_patch_multiplier(tmp_path: Path):

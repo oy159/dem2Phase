@@ -10,7 +10,7 @@ from .config import load_config, resolve_path
 from .generator import generate_dataset
 from .landcover import prepare_landcover
 from .validation import compare_datasets, validate_dataset
-from .visualization import visualize_patch
+from .visualization import browse_patches, visualize_patch
 
 
 def _parser() -> argparse.ArgumentParser:
@@ -54,6 +54,13 @@ def _parser() -> argparse.ArgumentParser:
     visualize.add_argument("--colormap", default="jet",
                            help="Matplotlib colormap for continuous and categorical maps")
     visualize.add_argument("--show", action="store_true", help="Open an interactive matplotlib window")
+    browse = commands.add_parser("browse", help="Interactively browse grouped MAT patches")
+    browse.add_argument("--dataset", required=True, type=Path)
+    browse.add_argument("--split", choices=("train", "test", "validation"), default="test")
+    browse.add_argument("--index", type=int, default=1,
+                        help="One-based initial patch index in global-ID order")
+    browse.add_argument("--match", help="Keep only filenames containing this text")
+    browse.add_argument("--colormap", default="jet")
     return parser
 
 
@@ -73,7 +80,9 @@ def main(argv: list[str] | None = None) -> None:
         result = validate_dataset(args.dataset.resolve())
     elif args.command == "compare-matlab":
         result = compare_datasets(args.matlab_dataset.resolve(), args.python_dataset.resolve())
-    else:
+    elif args.command == "visualize":
         result = visualize_patch(args.patch, args.dataset, args.split, args.index, args.match,
                                  args.edge, args.output, args.dpi, args.show, args.colormap)
+    else:
+        result = browse_patches(args.dataset, args.split, args.index, args.match, args.colormap)
     print(json.dumps(result, indent=2))

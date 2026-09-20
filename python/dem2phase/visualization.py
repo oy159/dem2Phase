@@ -4,11 +4,20 @@ from __future__ import annotations
 
 import json
 import math
+import re
 from pathlib import Path
 from typing import Any
 
 import numpy as np
 from scipy.io import loadmat
+
+
+_PATCH_ID = re.compile(r"_patch_(\d+)\.mat$", re.IGNORECASE)
+
+
+def _patch_sort_key(path: Path) -> tuple[int, str]:
+    match = _PATCH_ID.search(path.name)
+    return (int(match.group(1)) if match else 2**63 - 1, path.name.lower())
 
 
 def _resolve_patch(patch: Path | None, dataset: Path | None, split: str,
@@ -21,7 +30,7 @@ def _resolve_patch(patch: Path | None, dataset: Path | None, split: str,
         return path, root
     assert dataset is not None
     root = dataset.resolve()
-    files = sorted((root / "patch_groups" / split).glob("*.mat"))
+    files = sorted((root / "patch_groups" / split).glob("*.mat"), key=_patch_sort_key)
     if match:
         files = [item for item in files if match.lower() in item.name.lower()]
     if not files:
@@ -182,3 +191,104 @@ def visualize_patch(patch: Path | None, dataset: Path | None, split: str = "test
     plt.close(fig)
     plt.close(terrain_fig)
     return summary
+
+
+def browse_patches(dataset: Path, split: str = "test", index: int = 1,
+                   match: str | None = None, colormap: str = "jet") -> dict[str, Any]:
+    """Open a no-output A/D keyboard browser ordered by global patch ID."""
+    root = dataset.resolve()
+    files = sorted((root / "patch_groups" / split).glob("*.mat"), key=_patch_sort_key)
+    if match:
+        files = [item for item in files if match.lower() in item.name.lower()]
+    if not files:
+        raise FileNotFoundError(f"No matching MAT patches in {root / 'patch_groups' / split}")
+    if index < 1 or index > len(files):
+        raise IndexError(f"Initial index {index} is outside 1..{len(files)}")
+
+    import matplotlib.pyplot as plt
+
+    state = {"index": index - 1}
+    fig = plt.figure(figsize=(18, 12))
+
+    def render() -> None:
+        path = files[state["index"]]
+        payload = loadmat(path, squeeze_me=True, struct_as_record=False)
+        noisy = _stack(payload, "wrappedphase_withnoise").astype(np.float64)
+        clean = _stack(payload, "wrappedphase_withoutnoise").astype(np.float64)
+        unwrapped = _stack(payload, "unwrapped_phase").astype(np.float64)
+        coherence = _stack(payload, "coherence_observed").astype(np.float64)
+        edge_mask = np.asarray(payload["valid_edge_mask"]).astype(bool).reshape(-1)
+        active = np.flatnonzero(edge_mask).tolist()
+        terrain = payload.get("terrain_features")
+        metadata = payload.get("metadata")
+        patch_name = str(_json_scalar(_field(metadata, "patch_name", path.stem)))
+        tile = str(_json_scalar(_field(metadata, "geographic_tile", "unknown")))
+        baselines = np.asarray(payload["baseline_perp_m"]).reshape(-1)
+        ambiguity = np.asarray(payload["ambiguity_height_m"]).reshape(-1)
+
+        fig.clear()
+        columns = max(1, len(active)) + 1
+        axes = fig.subplots(5, columns, squeeze=False)
+        fig.subplots_adjust(left=0.035, right=0.97, top=0.91, bottom=0.065,
+                            hspace=0.30, wspace=0.22)
+        fig.suptitle(
+            f"[{state['index'] + 1}/{len(files)}] {patch_name} | tile {tile} | "
+            "A: previous   D: next   Q/Esc: quit",
+            fontsize=13,
+        )
+        row_names = ("Noisy wrapped", "Clean wrapped", "Unwrapped GT",
+                     "Observed coherence", "Circular noise error")
+        for column, edge in enumerate(active):
+            residual = _circular_error(noisy[edge], clean[edge])
+            lo, hi = _finite_limits(unwrapped[edge])
+            panels = (
+                (noisy[edge], -math.pi, math.pi),
+                (clean[edge], -math.pi, math.pi),
+                (unwrapped[edge], lo, hi),
+                (coherence[edge], 0.0, 1.0),
+                (residual, -math.pi, math.pi),
+            )
+            for row, (data, vmin, vmax) in enumerate(panels):
+                axes[row, column].imshow(data, cmap=colormap, vmin=vmin, vmax=vmax)
+                axes[row, column].set_title(
+                    f"E{edge + 1} B={float(baselines[edge]):g}m "
+                    f"ha={float(ambiguity[edge]):.1f}m\n{row_names[row]}", fontsize=9)
+                axes[row, column].set_xticks([])
+                axes[row, column].set_yticks([])
+
+        terrain_panels = (
+            (np.asarray(payload["landcover_codes"]), "WorldCover"),
+            (np.asarray(_field(terrain, "slope_deg")), "Slope (deg)"),
+            (np.asarray(_field(terrain, "local_incidence_deg")), "Local incidence"),
+            (np.asarray(_field(terrain, "terrain_quality")), "Terrain quality"),
+            (np.asarray(_field(terrain, "layover_mask")) +
+             2 * np.asarray(_field(terrain, "shadow_mask")), "Layover=1 / shadow=2"),
+        )
+        terrain_column = columns - 1
+        for row, (data, title) in enumerate(terrain_panels):
+            cmap = "gray_r" if row == 4 else colormap
+            lo, hi = (0.0, 2.0) if row == 4 else _finite_limits(data)
+            axes[row, terrain_column].imshow(data, cmap=cmap, vmin=lo, vmax=hi)
+            axes[row, terrain_column].set_title(title, fontsize=9)
+            axes[row, terrain_column].set_xticks([])
+            axes[row, terrain_column].set_yticks([])
+        fig.canvas.manager.set_window_title(f"dem2phase patch browser - {state['index'] + 1}/{len(files)}")
+        fig.canvas.draw_idle()
+
+    def on_key(event: Any) -> None:
+        key = (event.key or "").lower()
+        if key in {"d", "right"}:
+            state["index"] = (state["index"] + 1) % len(files)
+            render()
+        elif key in {"a", "left"}:
+            state["index"] = (state["index"] - 1) % len(files)
+            render()
+        elif key in {"q", "escape"}:
+            plt.close(fig)
+
+    fig.canvas.mpl_connect("key_press_event", on_key)
+    render()
+    plt.show()
+    plt.close(fig)
+    return {"dataset": str(root), "split": split, "patches": len(files),
+            "initial_index": index, "colormap": colormap, "files_written": 0}
