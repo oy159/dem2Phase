@@ -51,6 +51,8 @@ def _parser() -> argparse.ArgumentParser:
                            help="One-based edge slot to render; repeat for several")
     visualize.add_argument("--output", type=Path, help="Output PNG path")
     visualize.add_argument("--dpi", type=int, default=150)
+    visualize.add_argument("--colormap", default="jet",
+                           help="Matplotlib colormap for continuous and categorical maps")
     visualize.add_argument("--show", action="store_true", help="Open an interactive matplotlib window")
     return parser
 
@@ -73,5 +75,5 @@ def main(argv: list[str] | None = None) -> None:
         result = compare_datasets(args.matlab_dataset.resolve(), args.python_dataset.resolve())
     else:
         result = visualize_patch(args.patch, args.dataset, args.split, args.index, args.match,
-                                 args.edge, args.output, args.dpi, args.show)
+                                 args.edge, args.output, args.dpi, args.show, args.colormap)
     print(json.dumps(result, indent=2))

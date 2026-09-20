@@ -67,7 +67,8 @@ def _circular_error(left: np.ndarray, right: np.ndarray) -> np.ndarray:
 def visualize_patch(patch: Path | None, dataset: Path | None, split: str = "test",
                     index: int = 1, match: str | None = None,
                     edges: list[int] | None = None, output: Path | None = None,
-                    dpi: int = 150, show: bool = False) -> dict[str, Any]:
+                    dpi: int = 150, show: bool = False,
+                    colormap: str = "jet") -> dict[str, Any]:
     path, root = _resolve_patch(patch, dataset, split, index, match)
     payload = loadmat(path, squeeze_me=True, struct_as_record=False)
     noisy = _stack(payload, "wrappedphase_withnoise").astype(np.float64)
@@ -112,11 +113,11 @@ def visualize_patch(patch: Path | None, dataset: Path | None, split: str = "test
         valid_values = valid & np.isfinite(residual)
         phase_lo, phase_hi = _finite_limits(unwrapped[edge][valid] if valid.any() else unwrapped[edge])
         panels = (
-            (noisy[edge], "Noisy wrapped phase", "twilight", -math.pi, math.pi),
-            (clean[edge], "Clean wrapped phase", "twilight", -math.pi, math.pi),
-            (unwrapped[edge], "Unwrapped phase GT", "viridis", phase_lo, phase_hi),
-            (coherence[edge], "Observed coherence", "magma", 0.0, 1.0),
-            (residual, "Circular noisy-clean error", "coolwarm", -math.pi, math.pi),
+            (noisy[edge], "Noisy wrapped phase", colormap, -math.pi, math.pi),
+            (clean[edge], "Clean wrapped phase", colormap, -math.pi, math.pi),
+            (unwrapped[edge], "Unwrapped phase GT", colormap, phase_lo, phase_hi),
+            (coherence[edge], "Observed coherence", colormap, 0.0, 1.0),
+            (residual, "Circular noisy-clean error", colormap, -math.pi, math.pi),
         )
         for row, (data, title, cmap, vmin, vmax) in enumerate(panels):
             image = axes[row, column].imshow(data, cmap=cmap, vmin=vmin, vmax=vmax)
@@ -139,13 +140,13 @@ def visualize_patch(patch: Path | None, dataset: Path | None, split: str = "test
 
     terrain = payload.get("terrain_features")
     terrain_panels = [
-        (np.asarray(payload["landcover_codes"]), "WorldCover code", "tab20", None, None),
-        (np.asarray(payload["landcover_factor"]), "Land-cover coherence factor", "viridis", 0, 1),
-        (np.asarray(_field(terrain, "slope_deg")), "Slope (deg)", "terrain", None, None),
-        (np.asarray(_field(terrain, "local_incidence_deg")), "Local incidence (deg)", "viridis", None, None),
-        (np.asarray(_field(terrain, "roughness_m")), "Roughness (m)", "magma", None, None),
-        (np.asarray(_field(terrain, "tpi_m")), "TPI (m)", "coolwarm", None, None),
-        (np.asarray(_field(terrain, "terrain_quality")), "Terrain quality", "viridis", 0, 1),
+        (np.asarray(payload["landcover_codes"]), "WorldCover code", colormap, None, None),
+        (np.asarray(payload["landcover_factor"]), "Land-cover coherence factor", colormap, 0, 1),
+        (np.asarray(_field(terrain, "slope_deg")), "Slope (deg)", colormap, None, None),
+        (np.asarray(_field(terrain, "local_incidence_deg")), "Local incidence (deg)", colormap, None, None),
+        (np.asarray(_field(terrain, "roughness_m")), "Roughness (m)", colormap, None, None),
+        (np.asarray(_field(terrain, "tpi_m")), "TPI (m)", colormap, None, None),
+        (np.asarray(_field(terrain, "terrain_quality")), "Terrain quality", colormap, 0, 1),
         (np.asarray(_field(terrain, "layover_mask")), "Layover mask", "gray_r", 0, 1),
         (np.asarray(_field(terrain, "shadow_mask")), "Shadow mask", "gray_r", 0, 1),
     ]
@@ -169,6 +170,7 @@ def visualize_patch(patch: Path | None, dataset: Path | None, split: str = "test
         "source_file": str(_json_scalar(_field(metadata, "source_file", "unknown"))),
         "active_edge_slots": (np.flatnonzero(edge_mask) + 1).tolist(),
         "rendered_edge_slots": [item + 1 for item in selected],
+        "colormap": colormap,
         "edges": edge_summaries,
         "overview_png": str(output),
         "terrain_png": str(terrain_output),
@@ -180,4 +182,3 @@ def visualize_patch(patch: Path | None, dataset: Path | None, split: str = "test
     plt.close(fig)
     plt.close(terrain_fig)
     return summary
-

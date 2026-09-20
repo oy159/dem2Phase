@@ -55,8 +55,12 @@ Render a patch overview, a terrain/land-cover panel, and a JSON summary:
 ```bash
 python -m dem2phase visualize \
   --dataset data/local_test_python --split test --index 1 \
+  --colormap jet \
   --output data/local_test_python/visualizations/test_patch_001.png
 ```
+
+`jet` is the default colormap. Pass another Matplotlib colormap name through
+`--colormap` when a cyclic or perceptually uniform view is needed.
 
 Select by filename text or render particular one-based edge slots:
 
