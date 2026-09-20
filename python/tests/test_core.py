@@ -20,6 +20,7 @@ from dem2phase.io import load_split_manifest
 from dem2phase.landcover import worldcover_token
 from dem2phase.rng import derive_seed, generator
 from dem2phase.validation import validate_dataset
+from dem2phase.visualization import visualize_patch
 import dem2phase.generator as generator_module
 
 
@@ -119,6 +120,23 @@ def test_selected_dem_shard_preserves_full_run_identity(tmp_path: Path):
                 shard_sample["metadata"].patch_global_id)
     assert (shard / "input_inventory.csv").is_file()
     assert (shard / "recovery_recipe.json").is_file()
+
+
+def test_split_selection_preserves_global_identity_and_visualizes(tmp_path: Path):
+    cfg = load_config(_fixture_project(tmp_path))
+    output = tmp_path / "test_only"
+    generate_dataset(cfg, output, 42, workers=1, splits=["test"])
+    report = validate_dataset(output)
+    assert report["samples"] == 2
+    files = sorted((output / "patch_groups" / "test").glob("*.mat"))
+    assert [path.name for path in files] == [
+        "fixture_N00E001_DEM_patch_00003.mat",
+        "fixture_N00E001_DEM_patch_00004.mat",
+    ]
+    rendered = visualize_patch(None, output, split="test", index=1, dpi=40)
+    assert Path(rendered["overview_png"]).is_file()
+    assert Path(rendered["terrain_png"]).is_file()
+    assert Path(rendered["summary_json"]).is_file()
 
 
 def test_config_extends_and_patch_multiplier(tmp_path: Path):

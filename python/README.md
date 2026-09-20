@@ -40,6 +40,36 @@ python -m dem2phase compare-matlab \
   --python-dataset data/pilot_dataset_uav_p_500m_phase4_python
 ```
 
+Generate only the predefined test split while preserving the full manifest's
+global patch IDs:
+
+```bash
+python -m dem2phase generate \
+  --config configs/uav_p_500m_monostatic.json \
+  --split test --seed 42 --workers 4 \
+  --output data/local_test_python
+```
+
+Render a patch overview, a terrain/land-cover panel, and a JSON summary:
+
+```bash
+python -m dem2phase visualize \
+  --dataset data/local_test_python --split test --index 1 \
+  --output data/local_test_python/visualizations/test_patch_001.png
+```
+
+Select by filename text or render particular one-based edge slots:
+
+```bash
+python -m dem2phase visualize \
+  --dataset data/local_test_python --split test --match N32E078 \
+  --edge 1 --edge 4 --output visualizations/N32E078.png
+
+python -m dem2phase visualize \
+  --patch data/local_test_python/patch_groups/test/example.mat \
+  --output visualizations/example.png
+```
+
 ## Cloud 10x profile and local recovery
 
 `configs/uav_p_500m_cloud_10x.json` inherits the production physics from the

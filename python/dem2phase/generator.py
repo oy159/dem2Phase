@@ -175,7 +175,8 @@ def _complete_plan(output: Path, target_patches: int) -> pd.DataFrame | None:
 def generate_dataset(cfg: dict[str, Any], output: Path, seed: int,
                      workers: int = 1, resume: bool = False,
                      dem_files: list[str] | None = None,
-                     patches_per_dem: int | None = None) -> dict[str, Any]:
+                     patches_per_dem: int | None = None,
+                     splits: list[str] | None = None) -> dict[str, Any]:
     manifest_path = resolve_path(cfg, cfg["dataset"]["split_manifest"])
     dem_root = resolve_path(cfg, cfg["dataset"]["dem_directory"])
     manifest = load_split_manifest(manifest_path)
@@ -190,13 +191,20 @@ def generate_dataset(cfg: dict[str, Any], output: Path, seed: int,
         [0], np.cumsum(manifest["patches_per_dem"].to_numpy(dtype=int))[:-1]))
     full_manifest_rows = len(manifest)
     full_target_patches = int(manifest["patches_per_dem"].sum())
+    if splits:
+        invalid_splits = sorted(set(splits) - {"train", "test", "validation"})
+        if invalid_splits:
+            raise ValueError(f"Unknown dataset splits: {invalid_splits}")
+        manifest = manifest[manifest["split"].isin(splits)].copy()
     if dem_files:
         unknown = sorted(set(dem_files) - set(manifest["dem_file"]))
         if unknown:
             raise ValueError(f"Requested DEMs are absent from the split manifest: {unknown}")
         manifest = manifest[manifest["dem_file"].isin(dem_files)].copy()
         manifest = manifest.sort_values("_manifest_index")
-    dem_paths = discover_dems(dem_root, manifest, allow_extras=bool(dem_files))
+    if manifest.empty:
+        raise ValueError("DEM/split selection produced no manifest rows")
+    dem_paths = discover_dems(dem_root, manifest, allow_extras=bool(dem_files or splits))
     inventory, input_fingerprint = _input_inventory(cfg, manifest_path, dem_paths)
     state = _state(cfg, seed, manifest, input_fingerprint,
                    full_manifest_rows, full_target_patches)
