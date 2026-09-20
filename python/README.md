@@ -61,6 +61,9 @@ python -m dem2phase visualize \
 
 `jet` is the default colormap. Pass another Matplotlib colormap name through
 `--colormap` when a cyclic or perceptually uniform view is needed.
+All raster panels use `interpolation="nearest"` with resampling disabled,
+matching MATLAB `imagesc` pixel display and avoiding antialiasing halos at
+wrapped-phase discontinuities.
 
 Browse without writing any image or JSON files. Patches are ordered by numeric
 `patch_global_id`; press `A`/left for the previous patch, `D`/right for the

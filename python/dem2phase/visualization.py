@@ -129,7 +129,10 @@ def visualize_patch(patch: Path | None, dataset: Path | None, split: str = "test
             (residual, "Circular noisy-clean error", colormap, -math.pi, math.pi),
         )
         for row, (data, title, cmap, vmin, vmax) in enumerate(panels):
-            image = axes[row, column].imshow(data, cmap=cmap, vmin=vmin, vmax=vmax)
+            image = axes[row, column].imshow(
+                data, cmap=cmap, vmin=vmin, vmax=vmax,
+                interpolation="nearest", resample=False,
+            )
             axes[row, column].set_title(f"E{edge + 1} | {title}")
             axes[row, column].set_xticks([])
             axes[row, column].set_yticks([])
@@ -164,7 +167,10 @@ def visualize_patch(patch: Path | None, dataset: Path | None, split: str = "test
     for axis, (data, title, cmap, vmin, vmax) in zip(terrain_axes.ravel(), terrain_panels):
         if vmin is None:
             vmin, vmax = _finite_limits(data)
-        image = axis.imshow(data, cmap=cmap, vmin=vmin, vmax=vmax)
+        image = axis.imshow(
+            data, cmap=cmap, vmin=vmin, vmax=vmax,
+            interpolation="nearest", resample=False,
+        )
         axis.set_title(title)
         axis.set_xticks([])
         axis.set_yticks([])
@@ -250,7 +256,10 @@ def browse_patches(dataset: Path, split: str = "test", index: int = 1,
                 (residual, -math.pi, math.pi),
             )
             for row, (data, vmin, vmax) in enumerate(panels):
-                axes[row, column].imshow(data, cmap=colormap, vmin=vmin, vmax=vmax)
+                axes[row, column].imshow(
+                    data, cmap=colormap, vmin=vmin, vmax=vmax,
+                    interpolation="nearest", resample=False,
+                )
                 axes[row, column].set_title(
                     f"E{edge + 1} B={float(baselines[edge]):g}m "
                     f"ha={float(ambiguity[edge]):.1f}m\n{row_names[row]}", fontsize=8.5)
@@ -269,7 +278,10 @@ def browse_patches(dataset: Path, split: str = "test", index: int = 1,
         for row, (data, title) in enumerate(terrain_panels):
             cmap = "gray_r" if row == 4 else colormap
             lo, hi = (0.0, 2.0) if row == 4 else _finite_limits(data)
-            axes[row, terrain_column].imshow(data, cmap=cmap, vmin=lo, vmax=hi)
+            axes[row, terrain_column].imshow(
+                data, cmap=cmap, vmin=lo, vmax=hi,
+                interpolation="nearest", resample=False,
+            )
             axes[row, terrain_column].set_title(title, fontsize=9)
             axes[row, terrain_column].set_xticks([])
             axes[row, terrain_column].set_yticks([])
